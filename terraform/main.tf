@@ -52,8 +52,8 @@ module "secret_resources" {
 module "network_resources" {
   source = "./modules/network"
 
-  basic_config      = var.basic_config
-  network_config    = var.network_config
+  basic_config   = var.basic_config
+  network_config = var.network_config
 }
 
 module "pubsub_resources" {
@@ -75,3 +75,19 @@ module "bigtable_resources" {
   bigtable_config   = each.value
   additional_labels = var.additional_labels
 }
+
+module "cloudsql_resources" {
+  source = "./modules/postgres"
+
+  basic_config    = var.basic_config
+  cloudsql_config = var.cloudsql_config
+}
+
+# module "datadog" {
+#   source           = "./modules/datadog"
+#   enabled          = var.basic_config.enable_datadog
+#   datadog_api_key  = var.datadog_api_key
+#   datadog_app_key  = var.datadog_app_key
+#   env              = var.basic_config.environment
+#   gcp_project_full = var.basic_config.gcp_project_id
+# }

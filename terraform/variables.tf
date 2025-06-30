@@ -154,3 +154,25 @@ variable "additional_labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "cloudsql_config" {
+  description = "Configuration for Cloud SQL instance and connection"
+  type = object({
+    machine_type    = string // e.g. db-custom-2-3840
+    machine_edition = string
+    db_name         = string
+    db_admin_user   = string
+  })
+}
+
+# variable "datadog_api_key" {
+#   description = "Created via slack /dd-ovo integration. From GH secrets via github actions."
+#   type        = string
+#   sensitive   = true
+# }
+
+# variable "datadog_app_key" {
+#   description = "Created via slack /dd-ovo integration. From GH secrets via github actions."
+#   type        = string
+#   sensitive   = true
+# }
