@@ -1,0 +1,20 @@
+{
+  "files.watcherExclude": {
+    "**/.git/**": true, // Exclude version control metadata (Git repository files)
+    "**/.pytest_cache/**": true, // Exclude pytest cache directory
+    "**/__pycache__/**": true, // Exclude Python bytecode cache directories
+    "**/.venv/**": true // Exclude the Python virtual environment directory (.venv)
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml",
+    "editor.formatOnSave": true
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "yzhang.markdown-all-in-one",
+    "editor.formatOnSave": true
+  },
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features",
+    "editor.formatOnSave": true
+  }
+}

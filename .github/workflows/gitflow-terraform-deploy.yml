@@ -1,0 +1,191 @@
+name: "Gitflow Terraform Deploy"
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - "feature/**"
+      - "release/**"
+      - "hotfix/**"
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+    paths:
+      - "terraform/**"
+      - ".github/workflows/gitflow-terraform-deploy.yml"
+  pull_request:
+    types: [opened, reopened, closed, synchronize]
+    branches:
+      - main
+      - dev
+      - "release/**"
+    paths:
+      - "terraform/**"
+      - ".github/workflows/gitflow-terraform-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        type: environment
+      action:
+        description: "Action to perform"
+        required: true
+        type: choice
+        options:
+          - deploy
+          - destroy
+        default: "deploy"
+
+permissions:
+  contents: "read"
+  id-token: "write"
+
+jobs:
+  determine_environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      branch_type: ${{ steps.set-env.outputs.branch_type }}
+      source_environment: ${{ steps.set-source-env.outputs.source_environment }}
+      action: ${{ steps.set-action.outputs.action }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine Environment
+        id: set-env
+        run: |
+          BRANCH_NAME="${{ github.ref }}"
+          DEVELOPER_NAME=$(echo "${{ github.actor }}" | tr -d ' ')
+          DEVELOPER_ID="${{ github.actor_id }}"
+
+          # For pull_request events
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # Extract source branch name
+            TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
+            
+            if [[ "$TARGET_BRANCH" == "dev" ]]; then
+              BRANCH_NAME="refs/heads/dev"
+            elif [[ "$TARGET_BRANCH" == "main" ]]; then
+              BRANCH_NAME="refs/heads/main"
+            fi
+          fi
+
+          source ./scripts/get_environment_config.sh
+          output=$(get_environment_config "${{ github.event.repository.name }}" "" "$BRANCH_NAME" "$DEVELOPER_ID")
+          BRANCH_TYPE=$(echo "$output" | grep "branch_name" | cut -d'=' -f2 | tr '_' '-')
+
+          echo "REPOSITORY_NAME: ${{ github.event.repository.name }}"
+          echo "BRANCH_NAME: $BRANCH_NAME"
+          echo "DEVELOPER_NAME: $DEVELOPER_NAME"
+          echo "DEVELOPER_ID: $DEVELOPER_ID"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # For manual runs, use the input environment but still get branch_type from script
+            echo "ENVIRONMENT: ${{ inputs.environment }}"
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "branch_type=$BRANCH_TYPE" >> $GITHUB_OUTPUT
+            echo "developer_id=$DEVELOPER_ID" >> $GITHUB_OUTPUT
+          else
+            # For automatic runs, get both environment and branch_type from script
+            ENVIRONMENT=$(echo "$output" | grep "environment_name" | cut -d'=' -f2 | tr '_' '-')
+            echo "ENVIRONMENT: $ENVIRONMENT"
+            echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+            echo "branch_type=$BRANCH_TYPE" >> $GITHUB_OUTPUT
+            echo "developer_id=$DEVELOPER_ID" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set Action
+        id: set-action
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "action=${{ inputs.action }}" >> $GITHUB_OUTPUT
+          else
+            echo "action=deploy" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine Source Environment
+        id: set-source-env
+        run: |
+          # For workflow_dispatch, create, or push events
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.event_name }}" == "create" || "${{ github.event_name }}" == "push" ]]; then
+            if [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+              SOURCE_ENV="preprod"
+            elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
+              SOURCE_ENV="dev"
+            elif [[ "${{ github.ref }}" == refs/heads/feature/* ]]; then
+              SOURCE_ENV="dev"
+            fi
+
+          # For pull_request events
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # Extract source branch name
+            SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
+            TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
+            DEVELOPER_ID="${{ github.actor_id }}"
+            
+            if [[ "$SOURCE_BRANCH" == feature/* ]]; then
+              # Extract feature name to construct environment name
+              FEATURE_NAME=$(echo "$SOURCE_BRANCH" | sed 's/feature\///')
+              SOURCE_ENV="${DEVELOPER_ID}-${FEATURE_NAME}"
+            elif [[ "$SOURCE_BRANCH" == "dev" ]]; then
+              SOURCE_ENV="dev"
+            elif [[ "$SOURCE_BRANCH" == release/* ]]; then
+              SOURCE_ENV="uat"
+            elif [[ "$SOURCE_BRANCH" == hotfix/* ]]; then
+              SOURCE_ENV="hotfix"
+            fi
+          fi
+
+          # Set empty if no conditions match
+          SOURCE_ENV="${SOURCE_ENV:-}"
+
+          echo "source_environment=$SOURCE_ENV" >> $GITHUB_OUTPUT
+
+      - name: "Environment: ${{ steps.set-env.outputs.environment }}"
+        run: |
+          echo "ENVIRONMENT: ${{ steps.set-env.outputs.environment }}"
+          echo "SOURCE_ENVIRONMENT: ${{ steps.set-source-env.outputs.source_environment }}"
+          echo "BRANCH_TYPE: ${{ steps.set-env.outputs.branch_type }}"
+          echo "ACTION: ${{ steps.set-action.outputs.action }}"
+
+      - name: Sync File Env Variables to Github Environment Variables
+        if: steps.set-env.outputs.environment == 'prod' ||
+          steps.set-env.outputs.environment == 'preprod' ||
+          steps.set-env.outputs.environment == 'dev'
+        run: |
+          chmod +x ./scripts/sync_env_vars_to_github.sh 
+          clean_env_flag=''
+
+          if [[ ${{ steps.set-env.outputs.environment }} == 'prod' ||
+                ${{ steps.set-env.outputs.environment }} == 'preprod' ]]; then
+            clean_env_flag='-c'
+          fi
+
+          ./scripts/sync_env_vars_to_github.sh \
+            -t ${{ steps.set-env.outputs.environment }} \
+            -r ${{ github.repository }} \
+            $clean_env_flag
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+      - name: Clone Github environment variables and secrets
+        if: steps.set-source-env.outputs.source_environment != ''
+        run: |
+          chmod +x ./scripts/clone_github_environment_variables_secrets.sh
+          ./scripts/clone_github_environment_variables_secrets.sh \
+            -s ${{ steps.set-source-env.outputs.source_environment }} \
+            -t ${{ steps.set-env.outputs.environment }} \
+            -r ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+  terraform_operation:
+    needs: [determine_environment]
+    uses: nodejs-projects-kenanhancer/gitflow-shared-workflows/.github/workflows/reusable-gcp-shared-resources-terraform-deploy.yml@main
+    with:
+      environment: ${{ needs.determine_environment.outputs.environment }}
+      source_environment: ${{ needs.determine_environment.outputs.source_environment }}
+      branch_type: ${{ needs.determine_environment.outputs.branch_type }}
+      action: ${{ needs.determine_environment.outputs.action }}
+      terraform_dir: "terraform"
+    secrets: inherit

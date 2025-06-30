@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+# Run lint-staged first (which handles linting and formatting)
+yarn lint-staged
+
+# Then build the project
+yarn build
