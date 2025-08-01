@@ -7,15 +7,9 @@ variable "basic_config" {
   })
 }
 
-variable "additional_labels" {
-  description = "Additional Resource Labels"
-  type        = map(string)
-  default     = {}
-}
-
 variable "bigtable_config" {
-  description = "Configuration for a Bigtable instance"
-  type = object({
+  description = "Configuration for Bigtable instances"
+  type = map(object({
     instance_name       = string
     zone                = optional(string)
     min_nodes           = optional(number, 3)
@@ -36,5 +30,6 @@ variable "bigtable_config" {
       name            = string
       column_families = optional(list(string), [])
     }))
-  })
+  }))
+  default = {}
 }

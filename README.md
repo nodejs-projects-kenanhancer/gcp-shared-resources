@@ -11,7 +11,7 @@
 # This opens a browser window for you to sign in
 gcloud auth login # Login with your gcp account
 
-gcloud auth application-default login --account=<EMAIL>
+gcloud auth application-default login --account=$(gcloud config get-value account)
 
 # List all GCP projects you have access to
 # Shows PROJECT_ID, NAME, and PROJECT_NUMBER for each project
@@ -99,12 +99,18 @@ This terraform generates service account for github action so that all github ac
 
 ```bash
 cd ./gcp-shared-resources
-source ./scripts/init_terraform.sh
-gcp_project_id=<GCP-PROJECT-ID>
+gcp_project_id=medallion-dev-463909
+region=europe-west2
 gcp_bucket_name=terraform-state-bucket
 terraform_dir=terraform
 encryption_key="ch4xHNN/6Jlnt7wzZMD0nA3/vjb13YOmUHqhTrZc84c="
-init_terraform -b $gcp_bucket_name -p $gcp_project_id -d $terraform_dir -k $encryption_key
+./scripts/init_terraform.sh \    
+  -p gcp \
+  -i $gcp_project_id \
+  -r $region \
+  -b $gcp_bucket_name \
+  -d $terraform_dir \
+  -k $encryption_key
 
 
 source ./scripts/check_and_import_resources.sh

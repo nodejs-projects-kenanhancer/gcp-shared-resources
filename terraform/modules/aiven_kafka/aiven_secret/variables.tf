@@ -9,13 +9,13 @@ variable "basic_config" {
 }
 
 variable "aiven_config" {
-  description = "Kafka Aiven Configuration"
   type = object({
-    api_token          = string
-    project            = string
-    kafka_service_name = string
-    user_name          = string
-    max_cert_age_days  = number
+    username    = string
+    password    = string
+    access_cert = string
+    access_key  = string
+    ca_cert     = string
   })
-  default = null
+  description = "Kafka Aiven Configuration"
+  sensitive   = true
 }

@@ -26,39 +26,33 @@ variable "basic_config" {
   })
 }
 
-variable "aiven_config" {
-  description = "Kafka Aiven Configuration"
+variable "iam_config" {
+  description = "Unified IAM configuration"
   type = object({
-    api_token          = string
-    project            = string
-    kafka_service_name = string
-    user_name          = string
-    max_cert_age_days  = number
+    project_members = optional(list(object({
+      role    = string
+      members = list(string)
+    })), [])
+    bucket_members = optional(list(object({
+      buckets = list(string)
+      role    = string
+      members = list(string)
+    })), [])
   })
-}
-
-variable "network_config" {
-  description = "Network configuration"
-  type = object({
-    subnet_cidr             = string
-    vpc_connector_cidr      = string
-    public_project_cidr     = string
-    connector_max_instances = number
-    connector_min_instances = number
-  })
+  default = {}
 }
 
 variable "storages_config" {
-  description = "Map of storage configurations including bucket names, force destroy settings, and IAM roles"
+  description = "Map of storage configurations"
   type = map(object({
     name          = string
     force_destroy = bool
-    iam_roles     = list(string)
   }))
+  default = {}
 }
 
 variable "secrets_config" {
-  description = "Map of secret configurations  "
+  description = "Map of secret configurations including secret names, replication policy, and other settings"
   type = map(object({
     name         = string
     secret_value = optional(string)
@@ -75,10 +69,11 @@ variable "secrets_config" {
     expire_time = optional(string)
   }))
   sensitive = true
+  default   = {}
 }
 
-variable "pubsub_topics_config" {
-  description = "Configuration for Pub/Sub topics"
+variable "topic_config" {
+  description = "Map of Pub/Sub topic configurations"
   type = map(object({
     name            = string
     publish_members = optional(list(string), [])
@@ -87,11 +82,18 @@ variable "pubsub_topics_config" {
       }), {
       allowed_persistence_regions = ["europe-north1"] # Default value
     })
-
     labels = optional(map(string), {})
 
     # Message TTL in seconds (e.g., "86400s" = 1 day)
     message_retention_duration = optional(string) # default to null (7 days)
+
+    schema_config = optional(object({
+      enabled    = optional(bool, false)
+      name       = optional(string, "")     # Name of the schema, if not provided it will be derived from the topic name
+      type       = optional(string, "AVRO") # AVRO or PROTOCOL_BUFFER  
+      encoding   = optional(string, "JSON") # value can be "BINARY" or "JSON"
+      definition = optional(string, null)
+    }), {})
 
     # Simplified DLQ configuration
     dlq_config = optional(object({
@@ -99,12 +101,12 @@ variable "pubsub_topics_config" {
       message_retention_duration = optional(string, "2678400s") # Message TTL in seconds (e.g., "2678400s" = 31 days)
       max_delivery_attempts      = optional(number, 10)         # Retry attempts before moving to DLQ
       ack_deadline_seconds       = optional(number, 60)         # Message processing timeout before retry (default 60 seconds)
-    }))
+    }), {})
   }))
   default = {}
 }
 
-variable "bigtable_instances_config" {
+variable "bigtable_config" {
   description = "Configuration for Bigtable instances"
   type = map(object({
     instance_name       = string
@@ -131,39 +133,45 @@ variable "bigtable_instances_config" {
   default = {}
 }
 
-variable "pubsub_avro_schema_path" {
-  description = "PubSub Topic Schema Local Path"
-  type        = string
-}
+# variable "network_config" {
+#   description = "Network configuration"
+#   type = object({
+#     subnet_cidr             = string
+#     vpc_connector_cidr      = string
+#     public_project_cidr     = string
+#     connector_max_instances = number
+#     connector_min_instances = number
+#   })
+# }
 
-variable "application_config_bucket" {
-  description = "App Config with schema"
-  type        = string
-}
+# variable "application_config_bucket" {
+#   description = "App Config with schema"
+#   type        = string
+# }
 
-variable "project_members" {
-  type = object({
-    viewer = list(string)
-    owner  = optional(list(string), [])
-  })
-  description = "Project view members"
-}
+# variable "project_members" {
+#   type = object({
+#     viewer = list(string)
+#     owner  = optional(list(string), [])
+#   })
+#   description = "Project view members"
+# }
 
-variable "additional_labels" {
-  description = "Additional Resource Labels"
-  type        = map(string)
-  default     = {}
-}
+# variable "additional_labels" {
+#   description = "Additional Resource Labels"
+#   type        = map(string)
+#   default     = {}
+# }
 
-variable "cloudsql_config" {
-  description = "Configuration for Cloud SQL instance and connection"
-  type = object({
-    machine_type    = string // e.g. db-custom-2-3840
-    machine_edition = string
-    db_name         = string
-    db_admin_user   = string
-  })
-}
+# variable "cloudsql_config" {
+#   description = "Configuration for Cloud SQL instance and connection"
+#   type = object({
+#     machine_type    = string // e.g. db-custom-2-3840
+#     machine_edition = string
+#     db_name         = string
+#     db_admin_user   = string
+#   })
+# }
 
 # variable "datadog_api_key" {
 #   description = "Created via slack /dd-ovo integration. From GH secrets via github actions."
@@ -175,4 +183,16 @@ variable "cloudsql_config" {
 #   description = "Created via slack /dd-ovo integration. From GH secrets via github actions."
 #   type        = string
 #   sensitive   = true
+# }
+
+# variable "aiven_config" {
+#   description = "Kafka Aiven Configuration"
+#   type = object({
+#     api_token          = string
+#     project            = string
+#     kafka_service_name = string
+#     user_name          = string
+#     max_cert_age_days  = number
+#   })
+#   default = null
 # }

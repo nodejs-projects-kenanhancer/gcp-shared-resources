@@ -1,3 +1,16 @@
+module "aiven_secrets" {
+  source = "./aiven_secret"
+
+  basic_config = var.basic_config
+  aiven_config = {
+    username    = aiven-kafka-users_user.user.username
+    password    = aiven-kafka-users_user.user.password
+    access_cert = aiven-kafka-users_user.user.access_cert
+    access_key  = aiven-kafka-users_user.user.access_key
+    ca_cert     = data.aiven_project.kenan.ca_cert
+  }
+}
+
 locals {
   # Replace all hyphens with underscores in both parts
   sanitized_user = replace(var.aiven_config.user_name, "-", "_")

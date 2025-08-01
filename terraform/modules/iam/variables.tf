@@ -8,17 +8,18 @@ variable "basic_config" {
   })
 }
 
-variable "bucket_configs" {
-  type = map(object({
-    name      = string
-    iam_roles = list(string)
-  }))
-}
-
-variable "project_members" {
+variable "iam_config" {
+  description = "Unified IAM configuration"
   type = object({
-    viewer = list(string)
-    owner  = optional(list(string), [])
+    project_members = optional(list(object({
+      role    = string
+      members = list(string)
+    })), [])
+    bucket_members = optional(list(object({
+      buckets = list(string)
+      role    = string
+      members = list(string)
+    })), [])
   })
-  description = "Project members"
+  default = {}
 }

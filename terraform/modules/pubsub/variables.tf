@@ -7,14 +7,8 @@ variable "basic_config" {
   })
 }
 
-variable "additional_labels" {
-  description = "Additional Resource Labels"
-  type        = map(string)
-  default     = {}
-}
-
 variable "topic_config" {
-  description = "Configuration for a Pub/Sub topic"
+  description = "Map of Pub/Sub topic configurations"
   type = object({
     name            = string
     publish_members = optional(list(string), [])
@@ -23,11 +17,18 @@ variable "topic_config" {
       }), {
       allowed_persistence_regions = ["europe-north1"] # Default value
     })
-
     labels = optional(map(string), {})
 
     # Message TTL in seconds (e.g., "86400s" = 1 day)
     message_retention_duration = optional(string) # default to null (7 days)
+
+    schema_config = optional(object({
+      enabled    = optional(bool, false)
+      name       = optional(string, "")   # Name of the schema, if not provided it will be derived from the topic name
+      type       = optional(string, "AVRO") # AVRO or PROTOCOL_BUFFER  
+      encoding   = optional(string, "JSON") # value can be "BINARY" or "JSON"
+      definition = optional(string, null)
+    }), {})
 
     # Simplified DLQ configuration
     dlq_config = optional(object({
@@ -35,16 +36,6 @@ variable "topic_config" {
       message_retention_duration = optional(string, "2678400s") # Message TTL in seconds (e.g., "2678400s" = 31 days)
       max_delivery_attempts      = optional(number, 10)         # Retry attempts before moving to DLQ
       ack_deadline_seconds       = optional(number, 60)         # Message processing timeout before retry (default 60 seconds)
-    }))
+    }), {})
   })
-}
-
-variable "avro_schema_path" {
-  description = "PubSub Topic Schema path"
-  type        = string
-}
-
-variable "bucket_config_name" {
-  description = "App Config with schema"
-  type        = string
 }

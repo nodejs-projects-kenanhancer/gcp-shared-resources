@@ -1,12 +1,4 @@
 locals {
-  bucket_permissions = flatten([
-    for bucket_key, bucket in var.bucket_configs : [
-      for role in bucket.iam_roles : {
-        bucket_name = bucket.name
-        role        = role
-      }
-    ]
-  ])
   normalized_environment = replace(var.basic_config.environment, "-", "_")
   hashed_environment     = substr(md5(var.basic_config.environment), 0, 8)
   sanitized_account_id = format(
@@ -14,6 +6,41 @@ locals {
     substr(replace(var.basic_config.environment, "[^a-z0-9]", "-"), 0, 19),
     local.hashed_environment
   )
+
+  # Flatten project members for easier iteration
+  project_member_assignments = flatten([
+    for pm in var.iam_config.project_members : [
+      for member in pm.members : {
+        role   = pm.role
+        member = member
+      }
+    ]
+  ])
+
+  # Flatten bucket members for easier iteration
+  bucket_member_assignments = flatten([
+    for bm in var.iam_config.bucket_members : [
+      for bucket in bm.buckets : [
+        for member in bm.members : {
+          bucket = "${bucket}-${var.basic_config.environment}"
+          role   = bm.role
+          member = member
+        }
+      ]
+    ]
+  ])
+
+  # Define default roles for the shared service account
+  shared_sa_default_roles = [
+    "projects/${var.basic_config.gcp_project_id}/roles/cloud_function_runtime_role_${local.normalized_environment}",
+    "roles/secretmanager.secretAccessor",
+    "roles/pubsub.publisher",
+    "roles/pubsub.subscriber",
+    "roles/pubsub.editor",
+    "roles/eventarc.eventReceiver",
+    "roles/run.invoker",
+    "roles/bigtable.user"
+  ]
 }
 
 data "google_project" "current" {
@@ -38,53 +65,37 @@ resource "google_project_iam_custom_role" "cloud_function_runtime" {
   ]
 }
 
-# Project-level role assignments
-resource "google_project_iam_member" "runtime_role" {
+# Default project-level role assignments for shared service account
+resource "google_project_iam_member" "shared_sa_default_roles" {
+  for_each = toset(local.shared_sa_default_roles)
+
   project = var.basic_config.gcp_project_id
-  role    = google_project_iam_custom_role.cloud_function_runtime.id
+  role    = each.value
   member  = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
 }
 
-resource "google_project_iam_member" "cloud_function_secret_access_binding" {
+# Dynamic project-level role assignments from iam_config
+resource "google_project_iam_member" "project_member_assignments" {
+  for_each = {
+    for idx, assignment in local.project_member_assignments :
+    "${assignment.role}-${assignment.member}" => assignment
+  }
+
   project = var.basic_config.gcp_project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
+  role    = each.value.role
+  member  = each.value.member
 }
 
-resource "google_project_iam_member" "cloud_function_pubsub_publisher_binding" {
-  project = var.basic_config.gcp_project_id
-  role    = "roles/pubsub.publisher"
-  member  = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
-}
+# Bucket-specific permissions from iam_config
+resource "google_storage_bucket_iam_member" "bucket_member_assignments" {
+  for_each = {
+    for idx, assignment in local.bucket_member_assignments :
+    "${assignment.bucket}-${assignment.role}-${assignment.member}" => assignment
+  }
 
-resource "google_project_iam_member" "cloud_function_pubsub_subscriber_binding" {
-  project = var.basic_config.gcp_project_id
-  role    = "roles/pubsub.subscriber"
-  member  = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
-}
-
-resource "google_project_iam_member" "cloud_function_pubsub_editor_binding" {
-  project = var.basic_config.gcp_project_id
-  role    = "roles/pubsub.editor"
-  member  = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
-}
-
-resource "google_project_iam_member" "cloud_function_eventarc_receiver_binding" {
-  project = var.basic_config.gcp_project_id
-  role    = "roles/eventarc.eventReceiver"
-  member  = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
-}
-
-resource "google_project_iam_member" "cloud_function_run_invoker_binding" {
-  project = var.basic_config.gcp_project_id
-  role    = "roles/run.invoker"
-  member  = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
-}
-
-resource "google_project_iam_member" "cloud_function_bigtable_access_binding" {
-  project = var.basic_config.gcp_project_id
-  role    = "roles/bigtable.user" # This role includes bigtable.tables.mutateRows permission
-  member  = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
+  bucket = each.value.bucket
+  role   = each.value.role
+  member = each.value.member
 }
 
 # Bucket-specific permissions
@@ -92,26 +103,4 @@ resource "google_storage_bucket_iam_member" "terraform_state_access" {
   bucket = "${var.basic_config.tf_state_bucket}-${var.basic_config.gcp_project_id}"
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
-}
-
-resource "google_storage_bucket_iam_member" "bucket_permissions" {
-  for_each = { for perm in local.bucket_permissions : "${perm.bucket_name}-${perm.role}" => perm }
-
-  bucket = each.value.bucket_name
-  role   = each.value.role
-  member = "serviceAccount:${google_service_account.shared_cloud_function_sa.email}"
-}
-
-resource "google_project_iam_member" "project_view_permissions" {
-  for_each = { for idx, sa in var.project_members.viewer : idx => sa }
-  project  = var.basic_config.gcp_project_id
-  role     = "roles/viewer"
-  member   = each.value
-}
-
-resource "google_project_iam_member" "project_owner_permissions" {
-  for_each = { for idx, sa in var.project_members.owner : idx => sa }
-  project  = var.basic_config.gcp_project_id
-  role     = "roles/owner"
-  member   = each.value
 }

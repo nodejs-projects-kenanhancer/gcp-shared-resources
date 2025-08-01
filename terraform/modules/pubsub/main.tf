@@ -1,29 +1,25 @@
 locals {
-  schema_name = split(".", basename(var.avro_schema_path))[0]
+  topic_name     = "${var.topic_config.name}-${var.basic_config.environment}"
+  schema_name    = "${var.topic_config.schema_config.name}-${var.basic_config.environment}"
+  schema_enabled = try(var.topic_config.schema_config.enabled, false)
 
-  # DLQ configuration helpers
   dlq_enabled      = try(var.topic_config.dlq_config.enabled, false)
-  topic_name       = "${var.topic_config.name}-${var.basic_config.environment}"
-  dlq_topic_name   = local.dlq_enabled ? "${var.topic_config.name}-dlq-${var.basic_config.environment}" : null
+  dlq_topic_name   = "${var.topic_config.name}-dlq-${var.basic_config.environment}"
   default_sub_name = local.dlq_enabled ? "${var.topic_config.name}-default-sub-${var.basic_config.environment}" : null
 }
 
-data "google_storage_bucket_object_content" "schema_file" {
-  name   = var.avro_schema_path
-  bucket = var.bucket_config_name
-}
-
 resource "google_pubsub_schema" "event_schema" {
-  name       = "${var.topic_config.name}-${local.schema_name}-${var.basic_config.environment}"
-  type       = "AVRO"
-  definition = data.google_storage_bucket_object_content.schema_file.content
+  count = local.schema_enabled ? 1 : 0
+
+  project    = var.basic_config.gcp_project_id
+  name       = local.schema_name
+  type       = var.topic_config.schema_config.type
+  definition = var.topic_config.schema_config.definition
 }
 
 resource "google_pubsub_topic" "topic" {
-  name    = local.topic_name
-  project = var.basic_config.gcp_project_id
-  labels  = var.additional_labels
-
+  name                       = local.topic_name
+  project                    = var.basic_config.gcp_project_id
   message_retention_duration = var.topic_config.message_retention_duration
 
   # Regional storage policy
@@ -31,9 +27,13 @@ resource "google_pubsub_topic" "topic" {
     allowed_persistence_regions = var.topic_config.message_storage_policy.allowed_persistence_regions
   }
 
-  schema_settings {
-    schema   = google_pubsub_schema.event_schema.id
-    encoding = "JSON"
+  # Only include schema_settings when schema is enabled
+  dynamic "schema_settings" {
+    for_each = local.schema_enabled ? [1] : []
+    content {
+      schema   = google_pubsub_schema.event_schema[0].id
+      encoding = var.topic_config.schema_config.encoding
+    }
   }
 }
 
@@ -65,8 +65,6 @@ resource "google_pubsub_topic" "dlq_topic" {
   name    = local.dlq_topic_name
   project = var.basic_config.gcp_project_id
 
-  labels = var.additional_labels
-
   # Message TTL in seconds (e.g., "86400s" = 1 day)
   message_retention_duration = var.topic_config.dlq_config.message_retention_duration
 
@@ -86,8 +84,6 @@ resource "google_pubsub_subscription" "default_subscription" {
   name    = local.default_sub_name
   topic   = google_pubsub_topic.topic.name
   project = var.basic_config.gcp_project_id
-
-  labels = var.additional_labels
 
   # Message processing timeout before retry
   ack_deadline_seconds = var.topic_config.dlq_config.ack_deadline_seconds

@@ -7,16 +7,11 @@ variable "basic_config" {
   })
 }
 
-variable "additional_labels" {
-  description = "Additional Resource Labels"
-  type        = map(string)
-  default     = {}
-}
-
 variable "storages_config" {
-  description = "Map of storage configurations including bucket names, force destroy settings"
+  description = "Map of storage configurations"
   type = map(object({
     name          = string
     force_destroy = bool
   }))
+  default = {}
 }

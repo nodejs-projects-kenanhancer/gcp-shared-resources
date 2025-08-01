@@ -8,17 +8,17 @@ resource "google_bigtable_instance" "instance" {
     zone       = var.bigtable_config.zone != null ? var.bigtable_config.zone : "${var.basic_config.gcp_region}-a"
 
     autoscaling_config {
-      min_nodes  = lookup(var.bigtable_config, "min_nodes", 3)
-      max_nodes  = lookup(var.bigtable_config, "max_nodes", 10)
-      cpu_target = lookup(var.bigtable_config, "cpu_target", 50)
+      min_nodes  = var.bigtable_config.min_nodes
+      max_nodes  = var.bigtable_config.max_nodes
+      cpu_target = var.bigtable_config.cpu_target
     }
 
-    storage_type = lookup(var.bigtable_config, "storage_type", "SSD")
+    storage_type = var.bigtable_config.storage_type
   }
 
   # Additional clusters configuration
   dynamic "cluster" {
-    for_each = lookup(var.bigtable_config, "additional_clusters", [])
+    for_each = var.bigtable_config.additional_clusters
     content {
       cluster_id = "${var.bigtable_config.instance_name}-${cluster.value.id}-${var.basic_config.environment}"
       zone       = cluster.value.zone
@@ -39,12 +39,12 @@ resource "google_bigtable_instance" "instance" {
         )
       }
 
-      storage_type = lookup(cluster.value, "storage_type", lookup(var.bigtable_config, "storage_type", "SSD"))
+      storage_type = cluster.value.storage_type
     }
   }
 
-  deletion_protection = lookup(var.bigtable_config, "deletion_protection", true)
-  labels              = merge(var.bigtable_config.labels, var.additional_labels)
+  deletion_protection = var.bigtable_config.deletion_protection", 
+  labels              = var.bigtable_config.labels
 }
 
 resource "google_bigtable_table" "tables" {
@@ -54,7 +54,7 @@ resource "google_bigtable_table" "tables" {
   project       = var.basic_config.gcp_project_id
 
   dynamic "column_family" {
-    for_each = lookup(each.value, "column_families", [])
+    for_each = each.value.column_families
     content {
       family = column_family.value
     }

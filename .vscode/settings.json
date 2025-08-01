@@ -16,5 +16,16 @@
   "[json]": {
     "editor.defaultFormatter": "vscode.json-language-features",
     "editor.formatOnSave": true
-  }
+  },
+  "cSpell.words": [
+    "aiven",
+    "cloudfunctions",
+    "cloudsql",
+    "eventarc",
+    "Hancer",
+    "Kenan",
+    "secretmanager",
+    "tfvar",
+    "tfvars"
+  ]
 }

@@ -8,29 +8,11 @@ variable "basic_config" {
   })
 }
 
-variable "additional_labels" {
-  description = "Additional Resource Labels"
-  type        = map(string)
-  default     = {}
-}
-
-variable "aiven_config" {
-  type = object({
-    username    = string
-    password    = string
-    access_cert = string
-    access_key  = string
-    ca_cert     = string
-  })
-  description = "Kafka Aiven Configuration"
-  sensitive   = true
-}
-
 variable "secrets_config" {
   description = "Map of secret configurations including secret names, replication policy, and other settings"
   type = map(object({
     name         = string
-    secret_value = optional(string) # Optional secret value
+    secret_value = optional(string)
     replication = optional(object({
       automatic = optional(bool, false)
       user_managed = optional(object({
@@ -43,4 +25,6 @@ variable "secrets_config" {
     annotations = optional(map(string), {})
     expire_time = optional(string)
   }))
+  sensitive = true
+  default   = {}
 }
