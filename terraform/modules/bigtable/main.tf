@@ -43,7 +43,7 @@ resource "google_bigtable_instance" "instance" {
     }
   }
 
-  deletion_protection = var.bigtable_config.deletion_protection", 
+  deletion_protection = var.bigtable_config.deletion_protection
   labels              = var.bigtable_config.labels
 }
 
