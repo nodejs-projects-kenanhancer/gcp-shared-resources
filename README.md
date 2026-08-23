@@ -293,3 +293,12 @@ gcloud iam workload-identity-pools providers list \
 gcloud iam workload-identity-pools providers undelete \
   projects/<GCP-PROJECT-NUMBER>/locations/global/workloadIdentityPools/github-id-pool/providers/github-id-pool-provider
 ```
+
+## Git hooks
+
+The pre-commit hook runs the scripts test suite (`scripts/tests/run_tests.sh`).
+Enable it once per clone:
+
+```bash
+git config core.hooksPath .husky
+```

@@ -1,0 +1,20 @@
+name: "Scripts Tests"
+
+on:
+  push:
+    paths:
+      - "scripts/**"
+      - ".github/workflows/scripts-tests.yml"
+  pull_request:
+    paths:
+      - "scripts/**"
+      - ".github/workflows/scripts-tests.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run scripts test suite
+        run: ./scripts/tests/run_tests.sh
