@@ -10,12 +10,12 @@ get_environment_config() {
     local TERRAFORM_DIR="$2"
     local BRANCH_NAME="$3"
     local DEVELOPER_NAME="$4"
-    local APPLICATION_NAME="$5"
+    local APPLICATION_NAME="${5:-}"
 
     # Helper function to get state prefix
     get_state_prefix() {
         local env="$1"
-        local suffix="$2"
+        local suffix="${2:-}"
         local base_path=""
 
         if [[ -n "$APPLICATION_NAME" ]]; then

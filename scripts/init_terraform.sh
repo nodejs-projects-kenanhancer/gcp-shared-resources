@@ -570,5 +570,8 @@ main() {
     init_terraform "$@"
 }
 
-# Execute main function if script is run directly
-main "$@"
+# Execute main only when the script is run directly, not when sourced —
+# CI workflows source this file to call init_terraform as a function.
+if [ "${BASH_SOURCE[0]}" -ef "$0" ]; then
+    main "$@"
+fi

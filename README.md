@@ -95,29 +95,43 @@ gcloud config configurations list
 
 ## Terraform Deployment from local
 
-This terraform generates service account for github action so that all github actions can deploy GCP resources using this service account. It has to be provisioned manually by using the following commands in terminal;
+This terraform provisions the shared GCP resources (storage buckets, Pub/Sub topics, secrets, Bigtable, and the shared runtime service account) that the application repositories consume.
+
+The state encryption key is NOT stored in the repository. `init_terraform.sh` resolves it from Secret Manager automatically and generates it on the very first run in a fresh project. See [Encryption key management](#encryption-key-management) below.
 
 ```bash
 cd ./gcp-shared-resources
 gcp_project_id=medallion-dev-463909
 region=europe-west2
-gcp_bucket_name=terraform-state-bucket
 terraform_dir=terraform
-encryption_key="ch4xHNN/6Jlnt7wzZMD0nA3/vjb13YOmUHqhTrZc84c="
-./scripts/init_terraform.sh \    
+
+./scripts/init_terraform.sh \
   -p gcp \
   -i $gcp_project_id \
   -r $region \
-  -b $gcp_bucket_name \
-  -d $terraform_dir \
-  -k $encryption_key
-
-
-source ./scripts/check_and_import_resources.sh
-check_resources -p $gcp_project_id -i github-id-pool -v github-id-pool-provider -d $terraform_dir
+  -d $terraform_dir
 
 terraform -chdir=$terraform_dir plan
 terraform -chdir=$terraform_dir apply
+```
+
+> The GitHub Actions identity (Workload Identity Federation pool/provider and `github-actions-sa`) is provisioned separately by the [gitflow-shared-workflows](https://github.com/nodejs-projects-kenanhancer/gitflow-shared-workflows) repository (`github-actions-resources-terraform/`), which also uses `scripts/check_and_import_resources.sh` to import soft-deleted pools back into state.
+
+### Encryption key management
+
+The GCS backend encrypts terraform state with a customer-supplied encryption key. The key never lives in git; `init_terraform.sh` resolves it in this order:
+
+1. `-k` flag: explicit override.
+2. `TF_STATE_ENCRYPTION_KEY` environment variable (used by CI, populated from a GitHub secret).
+3. Secret Manager secret named `<state-bucket>-encryption-key`: read if present, **generated and stored automatically on first use** in a fresh project.
+
+Because the secret is scoped to the state bucket, every repository sharing that bucket converges on the same key with zero coordination. To onboard another developer, grant access instead of sharing the key value:
+
+```bash
+gcloud secrets add-iam-policy-binding terraform-state-bucket-<project-id>-encryption-key \
+  --project=<project-id> \
+  --member="user:dev@example.com" \
+  --role="roles/secretmanager.secretAccessor"
 ```
 
 ## GCP CLI Commands Quick Reference

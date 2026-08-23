@@ -35,7 +35,8 @@ GCP_REGION=""
 print_usage() {
     cat <<EOF
 GCP Provider Options:
-    -k, --encryption-key KEY     Key used for state file encryption (REQUIRED)
+    -k, --encryption-key KEY     State encryption key (optional; when omitted it is
+                                 resolved from Secret Manager and generated on first use)
     -i, --project-id ID          Google Cloud Project ID (REQUIRED)
     -b, --bucket-name NAME       Name of the GCS bucket for Terraform state storage
                                  (default: $GCP_DEFAULT_BUCKET_PREFIX-<project-id>)
@@ -95,10 +96,6 @@ validate_required_args() {
     # Check each required argument
     if [ -z "$terraform_dir" ]; then
         missing_args+=("terraform-dir")
-    fi
-
-    if [ -z "$GCP_ENCRYPTION_KEY" ]; then
-        missing_args+=("encryption-key")
     fi
 
     if [ -z "$GCP_PROJECT_ID" ]; then
@@ -170,9 +167,72 @@ ensure_backend_storage() {
         fi
     fi
 
-    # Always ensure permissions are set
-    grant_bucket_permissions "$GCP_BUCKET_NAME" "$user_email"
-    return $?
+    # Best effort: a developer who already has object access but cannot edit
+    # bucket IAM must still be able to init
+    if ! grant_bucket_permissions "$GCP_BUCKET_NAME" "$user_email"; then
+        log_warning "Could not update bucket IAM policy (continuing, you may already have access)"
+    fi
+
+    ensure_encryption_key
+}
+
+# Resolve the state encryption key: -k flag first, then TF_STATE_ENCRYPTION_KEY
+# env var, then Secret Manager (get-or-create, scoped to the state bucket so
+# every repo sharing the bucket converges on the same key).
+ensure_encryption_key() {
+    if [ -n "$GCP_ENCRYPTION_KEY" ]; then
+        return 0
+    fi
+
+    if [ -n "${TF_STATE_ENCRYPTION_KEY:-}" ]; then
+        GCP_ENCRYPTION_KEY="$TF_STATE_ENCRYPTION_KEY"
+        log_info "Using encryption key from TF_STATE_ENCRYPTION_KEY"
+        return 0
+    fi
+
+    local secret_name="${GCP_BUCKET_NAME}-encryption-key"
+
+    if GCP_ENCRYPTION_KEY=$(gcloud secrets versions access latest \
+        --secret="$secret_name" --project="$GCP_PROJECT_ID" 2>/dev/null); then
+        log_info "Loaded encryption key from Secret Manager: $secret_name"
+        return 0
+    fi
+
+    # No key anywhere: refuse to invent one while encrypted state already
+    # exists, otherwise that state becomes permanently unreadable.
+    if gcloud storage ls "gs://${GCP_BUCKET_NAME}/**" 2>/dev/null | grep -q .; then
+        log_error "Bucket gs://${GCP_BUCKET_NAME} contains state but no encryption key was found"
+        log_error "Provide the original key with -k or restore the secret '$secret_name'"
+        return 1
+    fi
+
+    if ! command -v openssl >/dev/null 2>&1; then
+        log_error "openssl is required to generate a new encryption key"
+        return 1
+    fi
+
+    log_info "First use: generating a new state encryption key..."
+    gcloud services enable secretmanager.googleapis.com --project="$GCP_PROJECT_ID" >/dev/null 2>&1
+
+    GCP_ENCRYPTION_KEY=$(openssl rand -base64 32)
+
+    if printf '%s' "$GCP_ENCRYPTION_KEY" | gcloud secrets create "$secret_name" \
+        --project="$GCP_PROJECT_ID" \
+        --replication-policy="automatic" \
+        --data-file=- >/dev/null 2>&1; then
+        log_success "Encryption key created and stored in Secret Manager: $secret_name"
+    else
+        # Lost a bootstrap race (or cannot create): fall back to reading
+        if GCP_ENCRYPTION_KEY=$(gcloud secrets versions access latest \
+            --secret="$secret_name" --project="$GCP_PROJECT_ID" 2>/dev/null); then
+            log_info "Using encryption key created concurrently: $secret_name"
+        else
+            log_error "Could not create or read Secret Manager secret: $secret_name"
+            return 1
+        fi
+    fi
+
+    return 0
 }
 
 # Generate backend configuration
